@@ -13,96 +13,95 @@ public class MapReduce {
         long startTime = System.nanoTime();
         try{
             int threadPoolSize = Integer.parseInt(args[0]);
-            if (threadPoolSize == 0) {
-                throw new InvalidThreadPoolSizeException();
-            }
-            String[] files = {"bakerStreet.txt", "fish.txt", "singles.txt"};
-
-            Map<String, String> input = addFilesContentToInputHashmap(files);
-
-            // APPROACH #3: Distributed MapReduce
-            {
-                final Map<String, Map<String, Integer>> output = new HashMap<>();
-
-                // MAP:
-
-                final List<MappedItem> mappedItems = new LinkedList<>();
-
-                final MapCallback<String, MappedItem> mapCallback = new MapCallback<String, MappedItem>() {
-                    @Override
-                    public synchronized void mapDone(String file, List<MappedItem> results) {
-                        mappedItems.addAll(results);
-                    }
-                };
-
-                ExecutorService threadPool = Executors.newFixedThreadPool(threadPoolSize);
-
-                for (Map.Entry<String, String> entry : input.entrySet()) {
-                    final String file = entry.getKey();
-                    final String contents = entry.getValue();
-
-                    threadPool.execute(() -> map(file, contents, mapCallback));
-                }
-
-                threadPool.shutdown();
-                try{
-                    threadPool.awaitTermination(1, TimeUnit.MINUTES);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                while (!threadPool.isTerminated()) {}
-
-                // GROUP:
-
-                Map<String, List<String>> groupedItems = new HashMap<>();
-
-                for (MappedItem item : mappedItems) {
-                    String entry = item.getFirstLetter();
-                    String file = item.getFile();
-                    List<String> list = groupedItems.get(entry);
-                    if (list == null) {
-                        list = new LinkedList<>();
-                        groupedItems.put(entry, list);
-                    }
-                    list.add(file);
-                }
-
-                threadPool = Executors.newFixedThreadPool(threadPoolSize);
-
-                // REDUCE:
-
-                final ReduceCallback<String, String, Integer> reduceCallback = new ReduceCallback<String, String, Integer>() {
-                    @Override
-                    public synchronized void reduceDone(String k, Map<String, Integer> v) {
-                        output.put(k, v);
-                    }
-                };
-
-                for (Map.Entry<String, List<String>> entry : groupedItems.entrySet()) {
-                    final String word = entry.getKey();
-                    final List<String> list = entry.getValue();
-
-                    threadPool.execute(() -> reduce(word, list, reduceCallback));
-                }
-
-                threadPool.shutdown();
-                // Add timeont of 1 minute to thread pool
-                try{
-                    threadPool.awaitTermination(1, TimeUnit.MINUTES);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                while (!threadPool.isTerminated()) {}
-                long endTime = System.nanoTime();
-                long duration = (endTime - startTime) / 1000;
-                System.out.println(output);
-                System.out.println("Total Duration: " + duration + "us");
-            }
+            mapReduce(threadPoolSize);
         } catch (ArrayIndexOutOfBoundsException e){
             System.err.println("ERROR: No thread pool size argument provided");
             e.printStackTrace();
-        } catch (InvalidThreadPoolSizeException e) {
-            System.err.println("ERROR: Invalid thread pool size argument provided. Thread pool size must be greater than 0.");
+        }
+    }
+
+    private static void mapReduce(int threadPoolSize) throws IOException {
+        long startTime = System.nanoTime();
+        String[] files = {"bakerStreet.txt", "fish.txt", "singles.txt"};
+
+        Map<String, String> input = addFilesContentToInputHashmap(files);
+
+        // APPROACH #3: Distributed MapReduce
+        {
+            final Map<String, Map<String, Integer>> output = new HashMap<>();
+
+            // MAP:
+
+            final List<MappedItem> mappedItems = new LinkedList<>();
+
+            final MapCallback<String, MappedItem> mapCallback = new MapCallback<String, MappedItem>() {
+                @Override
+                public synchronized void mapDone(String file, List<MappedItem> results) {
+                    mappedItems.addAll(results);
+                }
+            };
+
+            ExecutorService threadPool = Executors.newFixedThreadPool(threadPoolSize);
+
+            for (Map.Entry<String, String> entry : input.entrySet()) {
+                final String file = entry.getKey();
+                final String contents = entry.getValue();
+
+                threadPool.execute(() -> map(file, contents, mapCallback));
+            }
+
+            threadPool.shutdown();
+            try{
+                threadPool.awaitTermination(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            while (!threadPool.isTerminated()) {}
+
+            // GROUP:
+
+            Map<String, List<String>> groupedItems = new HashMap<>();
+
+            for (MappedItem item : mappedItems) {
+                String entry = item.getFirstLetter();
+                String file = item.getFile();
+                List<String> list = groupedItems.get(entry);
+                if (list == null) {
+                    list = new LinkedList<>();
+                    groupedItems.put(entry, list);
+                }
+                list.add(file);
+            }
+
+            threadPool = Executors.newFixedThreadPool(threadPoolSize);
+
+            // REDUCE:
+
+            final ReduceCallback<String, String, Integer> reduceCallback = new ReduceCallback<String, String, Integer>() {
+                @Override
+                public synchronized void reduceDone(String k, Map<String, Integer> v) {
+                    output.put(k, v);
+                }
+            };
+
+            for (Map.Entry<String, List<String>> entry : groupedItems.entrySet()) {
+                final String word = entry.getKey();
+                final List<String> list = entry.getValue();
+
+                threadPool.execute(() -> reduce(word, list, reduceCallback));
+            }
+
+            threadPool.shutdown();
+            // Add timeont of 1 minute to thread pool
+            try{
+                threadPool.awaitTermination(1, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            while (!threadPool.isTerminated()) {}long endTime = System.nanoTime();
+            long duration = (endTime - startTime) / 1000;
+            System.out.println(output);
+            System.out.println("Total Duration: " + duration + "us");
         }
     }
 
